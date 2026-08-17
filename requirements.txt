@@ -1,0 +1,6 @@
+Flask
+yfinance
+feedparser
+nltk
+requests
+python-dateutil
