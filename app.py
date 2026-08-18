@@ -24,7 +24,7 @@ import finlex
 import indicators
 import predictor
 
-BUILD = "v3.1"
+BUILD = "v3.2"
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
