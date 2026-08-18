@@ -19,13 +19,12 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from sources import stocks, news
-import companies
+from sources import stocks, news, symbols
 import finlex
 import indicators
 import predictor
 
-BUILD = "v3.0"
+BUILD = "v3.1"
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -117,6 +116,30 @@ def api_watchlist_edit():
     return jsonify({"tickers": tickers})
 
 
+@app.get("/api/search")
+def api_search():
+    """
+    Company/ticker lookup. Curated catalog first (instant), then Yahoo's
+    live search for the rest of its universe. `live` in the response tells
+    the UI whether the live layer answered, so it can say so honestly
+    instead of implying the catalog is the whole market.
+    """
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 1:
+        return jsonify({"results": [], "live": False})
+    try:
+        return jsonify(symbols.search(q, limit=12))
+    except Exception as e:
+        app.logger.exception("symbol search failed")
+        # Degrade to catalog-only rather than failing the request outright.
+        return jsonify({"results": symbols.search_catalog(q, limit=12), "live": False, "error": str(e)})
+
+
+@app.get("/api/catalog")
+def api_catalog():
+    return jsonify(symbols.catalog_grouped())
+
+
 @app.get("/api/indices")
 def api_indices():
     try:
@@ -139,18 +162,6 @@ def api_quotes():
     except Exception as e:
         app.logger.exception("quotes batch failed")
         return jsonify({"error": str(e)}), 500
-
-
-@app.get("/api/search")
-def api_search():
-    q = (request.args.get("q") or "").strip()
-    return jsonify(companies.search(q))
-
-
-@app.get("/api/companies")
-def api_companies():
-    return jsonify(companies.catalog_grouped())
-
 
 
 @app.get("/api/analyze")
