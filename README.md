@@ -1,6 +1,6 @@
 # News Signal — Stock Terminal
 
-**BUILD v3.0**
+**BUILD v3.1**
 
 A local terminal-style dashboard that combines three things for a stock: recent
 **price volatility**, a set of standard **technical indicators**, and the
@@ -53,6 +53,18 @@ whether the news scoring works, in either direction.
 ---
 
 ## What's in it
+
+**Finding companies**
+- **Search by name or ticker** — type "Tata", "Apple", "hindustan unilever" or a raw
+  symbol. Autocomplete with arrow-key navigation.
+- Two search layers: a **bundled catalog of 229 major companies** (instant, works
+  offline) plus **live Yahoo Finance symbol search**, which covers its entire
+  universe — roughly 100,000+ listed securities across global exchanges.
+- **Browse panel** grouped by market and sector: United States (133), India/NSE (66),
+  Global ADRs (22), ETFs (8). Click to analyze, `+` to add to watchlist.
+
+The catalog is a convenience shortlist, **not** a restriction: any listed company
+Yahoo carries can be analyzed, whether or not it appears in the bundled list.
 
 **Market data**
 - Index strip: S&P 500, NASDAQ, Dow, NIFTY 50, SENSEX
@@ -139,6 +151,7 @@ app.py              Flask routes, build stamp, no-cache headers, watchlist persi
 proc_isolate.py     runs network calls in a subprocess with a timeout
 sources/stocks.py   prices, batch quotes, indices, currency detection
 sources/news.py     RSS fetching, alias filtering, dedup
+sources/symbols.py  company catalog + merged catalog/live symbol search
 indicators.py       RSI, SMA/EMA, MACD, Bollinger, ATR, 52w, S/R  (pure functions)
 finlex.py           finance sentiment lexicon: phrases, negation, intensifiers, recency
 predictor.py        band construction + walk-forward backtest
