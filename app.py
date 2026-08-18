@@ -27,7 +27,7 @@ import indicators
 import predictor
 import volatility as vol
 
-BUILD = "v4.1"
+BUILD = "v4.2"
 
 def _json_safe(o):
     """
@@ -291,9 +291,25 @@ def api_analyze():
 APP_STARTED = datetime.now(timezone.utc).isoformat()
 
 if __name__ == "__main__":
-    print("=" * 58)
-    print(f"  News Signal terminal  BUILD {BUILD}")
-    print(f"  If the UI header doesn't show {BUILD}, you're seeing a")
-    print("  cached page - hard refresh with Ctrl+Shift+R.")
-    print("=" * 58)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # Bind to localhost by default. The previous 0.0.0.0 + debug=True combo
+    # was a genuine security hole: Werkzeug's debugger allows arbitrary code
+    # execution, and 0.0.0.0 exposes it to every machine on the network.
+    # Set NEWS_SIGNAL_HOST=0.0.0.0 deliberately if you want LAN access.
+    host = os.environ.get("NEWS_SIGNAL_HOST", "127.0.0.1")
+    port = int(os.environ.get("NEWS_SIGNAL_PORT", "5000"))
+
+    print("=" * 60)
+    print(f"  News Signal terminal   BUILD {BUILD}")
+    print(f"  http://{host}:{port}")
+    print(f"  Header not showing {BUILD}?  Hard refresh: Ctrl+Shift+R")
+    print("=" * 60)
+
+    # use_reloader=False is deliberate and load-bearing:
+    #   * the reloader restarts the process on ANY file change in this
+    #     directory (watchdog watches the tree), and saving watchlist.json
+    #     is a file change - so editing your watchlist would bounce the
+    #     server and kill in-flight requests;
+    #   * the restart at startup lands exactly when the browser fires its
+    #     first requests, which shows up as "Failed to fetch" in the UI.
+    # threaded=True so a slow yfinance call can't block every other request.
+    app.run(host=host, port=port, debug=False, threaded=True, use_reloader=False)
