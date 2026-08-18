@@ -78,6 +78,44 @@
   .cmd button:hover { background:rgba(57,255,143,.16) }
   .cmd .hint { color:var(--dim); font-size:11px; margin-left:auto }
 
+  /* ---------- autocomplete ---------- */
+  .ac-wrap { position:relative }
+  .ac {
+    position:absolute; top:calc(100% + 4px); left:0; z-index:40; width:390px; max-height:340px;
+    overflow-y:auto; background:#050d09; border:1px solid var(--line-str); border-radius:5px;
+    display:none; box-shadow:0 10px 30px rgba(0,0,0,.6);
+  }
+  .ac.on { display:block }
+  .ac::-webkit-scrollbar { width:5px } .ac::-webkit-scrollbar-thumb { background:var(--line-str) }
+  .ac-item { padding:7px 11px; cursor:pointer; border-bottom:1px solid var(--line); display:flex; gap:9px; align-items:baseline }
+  .ac-item:last-child { border-bottom:none }
+  .ac-item:hover, .ac-item.sel { background:rgba(57,255,143,.12) }
+  .ac-item .s { color:var(--hi); font-weight:700; font-size:12px; min-width:78px }
+  .ac-item .n { color:var(--fg); font-size:11.5px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .ac-item .x { color:var(--dim); font-size:9.5px; white-space:nowrap }
+  .ac-head { padding:5px 11px; font-size:9.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--line); background:var(--panel) }
+
+  /* ---------- browse ---------- */
+  .br-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; cursor:pointer }
+  .br-body { display:none; margin-top:12px }
+  .br-body.on { display:block }
+  .br-tabs { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:12px }
+  .br-tab { font-size:11px; padding:4px 10px; border:1px solid var(--line); border-radius:3px; cursor:pointer; color:var(--dim) }
+  .br-tab:hover { color:var(--fg); border-color:var(--line-str) }
+  .br-tab.on { color:var(--accent); border-color:var(--accent); background:rgba(57,255,143,.1) }
+  .br-sec { margin-bottom:14px }
+  .br-sec h4 { font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--dim); margin:0 0 6px; font-weight:700 }
+  .br-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:5px }
+  .br-item {
+    display:flex; align-items:baseline; gap:7px; padding:5px 8px; border:1px solid var(--line);
+    border-radius:4px; cursor:pointer; font-size:11.5px;
+  }
+  .br-item:hover { border-color:var(--accent); background:rgba(57,255,143,.07) }
+  .br-item .s { color:var(--hi); font-weight:700; min-width:66px; font-size:11px; white-space:nowrap; padding-right:6px; flex-shrink:0 }
+  .br-item .n { color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .br-item .plus { margin-left:auto; color:var(--dim); font-size:13px; padding:0 3px }
+  .br-item .plus:hover { color:var(--accent) }
+
   h2.sec { font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--dim); margin:0 0 9px; font-weight:700 }
 
   .card { background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:14px 16px; margin-bottom:14px }
@@ -224,10 +262,31 @@
   <div class="strip" id="strip"><div class="strip-item"><span class="lbl">loading indices…</span></div></div>
 
   <div class="cmd">
-    <input id="tin" type="text" placeholder="ticker…  e.g. AAPL / RELIANCE.NS" maxlength="14">
+    <span class="ac-wrap">
+      <input id="tin" type="text" autocomplete="off" placeholder="search company or ticker… e.g. Tata, Apple, RELIANCE.NS" maxlength="40" style="width:330px">
+      <div class="ac" id="ac"></div>
+    </span>
     <button class="primary" id="goBtn">&gt; analyze</button>
     <button id="addBtn">+ watchlist</button>
-    <span class="hint">keys: <b>/</b> search · <b>enter</b> run · <b>r</b> refresh</span>
+    <span class="hint">keys: <b>/</b> search · <b>↑↓</b> pick · <b>enter</b> run · <b>r</b> refresh</span>
+  </div>
+
+  <div class="card">
+    <div class="br-head" id="brHead">
+      <h2 class="sec" style="margin:0">Browse companies</h2>
+      <span style="color:var(--dim);font-size:11px" id="brCount">…</span>
+      <span style="margin-left:auto;color:var(--accent);font-size:11px" id="brToggle">show ▾</span>
+    </div>
+    <div class="br-body" id="brBody">
+      <div class="br-tabs" id="brTabs"></div>
+      <div id="brList"><div class="loading">loading…</div></div>
+      <div class="note" style="margin-top:4px">
+        This is a curated shortlist for quick browsing — <b>not</b> the limit of what works.
+        The search box above also queries Yahoo Finance's full universe (~100,000+ listed
+        securities worldwide), so any listed company can be analyzed by typing its name or
+        ticker, whether or not it appears here.
+      </div>
+    </div>
   </div>
 
   <h2 class="sec">Watchlist</h2>
@@ -640,9 +699,135 @@ async function analyze(tk){
   }catch(e){ mainEl.innerHTML=`<div class="card err">could not reach server: ${e.message}</div>`; }
 }
 
-$('goBtn').addEventListener('click',()=>analyze(tinEl.value));
-tinEl.addEventListener('keydown',e=>{ if(e.key==='Enter') analyze(tinEl.value); });
-$('addBtn').addEventListener('click',()=>{ const t=tinEl.value.trim().toUpperCase(); if(t) editWatch('add',t); });
+/* ============================ autocomplete ============================ */
+const acEl=$('ac');
+let acItems=[], acSel=-1, acTimer=null, acSeq=0;
+
+function acClose(){ acEl.classList.remove('on'); acSel=-1; }
+
+function acRender(res, live){
+  acItems=res;
+  if(!res.length){ acEl.innerHTML=`<div class="ac-head">no match — press enter to try it as a ticker</div>`; acEl.classList.add('on'); return; }
+  const head=`<div class="ac-head">${res.length} match${res.length>1?'es':''} · ${live?'catalog + live Yahoo search':'catalog only (live search unavailable)'}</div>`;
+  acEl.innerHTML=head+res.map((r,i)=>`<div class="ac-item${i===acSel?' sel':''}" data-i="${i}">
+      <span class="s">${r.symbol}</span>
+      <span class="n">${r.name}</span>
+      <span class="x">${r.exchange||''}${r.source==='live'?' · live':''}</span>
+    </div>`).join('');
+  acEl.classList.add('on');
+  acEl.querySelectorAll('.ac-item').forEach(el=>el.addEventListener('mousedown',ev=>{
+    ev.preventDefault(); acPick(+el.dataset.i);
+  }));
+}
+
+function acPick(i){
+  const r=acItems[i]; if(!r) return;
+  acClose(); tinEl.value=r.symbol; analyze(r.symbol);
+}
+
+function acMove(d){
+  if(!acEl.classList.contains('on')||!acItems.length) return;
+  acSel=(acSel+d+acItems.length)%acItems.length;
+  acEl.querySelectorAll('.ac-item').forEach((el,i)=>el.classList.toggle('sel',i===acSel));
+  const sel=acEl.querySelector('.ac-item.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
+}
+
+tinEl.addEventListener('input',()=>{
+  const q=tinEl.value.trim();
+  clearTimeout(acTimer);
+  if(q.length<1){ acClose(); return; }
+  // Debounced so typing doesn't fire a live lookup on every keystroke.
+  acTimer=setTimeout(async()=>{
+    const seq=++acSeq;
+    try{
+      const j=await (await fetch('/api/search?q='+encodeURIComponent(q))).json();
+      if(seq!==acSeq) return;               // a newer keystroke already won
+      acRender(j.results||[], j.live);
+    }catch(e){ acClose(); }
+  },220);
+});
+tinEl.addEventListener('blur',()=>setTimeout(acClose,120));
+tinEl.addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){ e.preventDefault(); acMove(1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); acMove(-1); }
+  else if(e.key==='Escape'){ acClose(); }
+  else if(e.key==='Enter'){
+    if(acSel>=0 && acEl.classList.contains('on')) acPick(acSel);
+    else if(acItems.length && acEl.classList.contains('on')) acPick(0);  // top hit
+    else { acClose(); resolveAndAnalyze(tinEl.value); }
+  }
+});
+
+/* ============================ browse ============================ */
+let CATALOG=null, BR_REGION=null;
+
+async function loadCatalog(){
+  try{
+    CATALOG=await (await fetch('/api/catalog')).json();
+    $('brCount').textContent=`${CATALOG.total} companies in the quick list`;
+    const regions=Object.keys(CATALOG.groups);
+    BR_REGION=regions[0];
+    $('brTabs').innerHTML=regions.map(r=>{
+      const n=Object.values(CATALOG.groups[r]).reduce((a,b)=>a+b.length,0);
+      return `<span class="br-tab" data-r="${r}">${CATALOG.labels[r]||r} (${n})</span>`;
+    }).join('');
+    $('brTabs').querySelectorAll('.br-tab').forEach(el=>el.addEventListener('click',()=>{
+      BR_REGION=el.dataset.r; renderBrowse();
+    }));
+    renderBrowse();
+  }catch(e){ $('brList').innerHTML=`<div class="err">catalog: ${e.message}</div>`; }
+}
+
+function renderBrowse(){
+  if(!CATALOG) return;
+  $('brTabs').querySelectorAll('.br-tab').forEach(el=>el.classList.toggle('on',el.dataset.r===BR_REGION));
+  const sectors=CATALOG.groups[BR_REGION]||{};
+  $('brList').innerHTML=Object.keys(sectors).sort().map(sec=>`
+    <div class="br-sec"><h4>${sec} · ${sectors[sec].length}</h4><div class="br-grid">
+      ${sectors[sec].map(c=>`<div class="br-item" data-t="${c.symbol}" title="${c.name}">
+          <span class="s">${c.symbol}</span><span class="n">${c.name}</span>
+          <span class="plus" data-add="${c.symbol}" title="add to watchlist">+</span></div>`).join('')}
+    </div></div>`).join('');
+  $('brList').querySelectorAll('.br-item').forEach(el=>el.addEventListener('click',ev=>{
+    if(ev.target.dataset.add){ ev.stopPropagation(); editWatch('add',ev.target.dataset.add); return; }
+    analyze(el.dataset.t);
+    window.scrollTo({top:0,behavior:'smooth'});
+  }));
+}
+
+$('brHead').addEventListener('click',()=>{
+  const b=$('brBody'), open=b.classList.toggle('on');
+  $('brToggle').textContent=open?'hide ▴':'show ▾';
+  if(open && !CATALOG) loadCatalog();
+});
+
+/* The box now accepts company names too, so free text must be resolved to a
+   real symbol before analysing - otherwise "Tata Motors" would be sent as a
+   ticker and fail. Anything that already looks like a symbol goes straight
+   through; everything else takes the top search hit. */
+const looksLikeTicker=s=>/^[A-Za-z0-9.\-^&]{1,14}$/.test(s);
+
+async function resolveAndAnalyze(input){
+  const raw=(input||'').trim();
+  if(!raw) return;
+  if(looksLikeTicker(raw)) return analyze(raw);
+  mainEl.innerHTML=`<div class="loading">› resolving "${raw}" …</div>`;
+  try{
+    const j=await (await fetch('/api/search?q='+encodeURIComponent(raw))).json();
+    const top=(j.results||[])[0];
+    if(!top){ mainEl.innerHTML=`<div class="card err">no company found for "${raw}" — try a ticker symbol</div>`; return; }
+    tinEl.value=top.symbol;
+    analyze(top.symbol);
+  }catch(e){ mainEl.innerHTML=`<div class="card err">search failed: ${e.message}</div>`; }
+}
+
+$('goBtn').addEventListener('click',()=>{ acClose(); resolveAndAnalyze(tinEl.value); });
+// Adds the stock currently on screen - the input may hold a half-typed
+// company name, which is not a valid ticker to persist.
+$('addBtn').addEventListener('click',()=>{
+  const t=TICKER||tinEl.value.trim().toUpperCase();
+  if(t) editWatch('add',t);
+});
 $('refreshBtn').addEventListener('click',()=>{ loadQuotes(); loadIndices(); if(TICKER) analyze(TICKER); });
 $('autoBtn').addEventListener('click',()=>{
   const b=$('autoBtn');
