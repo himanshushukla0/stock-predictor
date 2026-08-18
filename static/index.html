@@ -757,17 +757,47 @@ function renderAll(d){
 }
 
 /* ---------------- analyze ---------------- */
+function failPanels(msg){
+  // Report into every content panel, not just whichever one is visible -
+  // otherwise switching tabs after a failure shows a stale "standby…".
+  ['p-ch','p-sg','p-in'].forEach(id=>{
+    const el=$(id); if(el) el.innerHTML=`<div class="card clip err">${msg}</div>`;
+  });
+  $('tCo').textContent='error'; $('tPx').textContent='—'; $('tCh').innerHTML='';
+}
+
 async function analyze(tk){
   tk=(tk||'').trim().toUpperCase(); if(!tk) return;
   tinEl.value=tk; TICKER=tk;
   document.querySelectorAll('.wlc').forEach(c=>c.classList.toggle('on',c.dataset.t===tk));
   $('tTk').textContent=tk; $('tCo').textContent='acquiring…'; $('tPx').textContent='—'; $('tCh').innerHTML='';
+
+  let res;
   try{
-    const r=await fetch('/api/analyze?ticker='+encodeURIComponent(tk));
-    const j=await r.json();
-    if(!r.ok){ $('tCo').textContent='error'; $('p-ch').innerHTML=`<div class="card err">error: ${j.error||'unknown'}</div>`; return; }
-    renderAll(j);
-  }catch(e){ $('p-ch').innerHTML=`<div class="card err">could not reach server: ${e.message}</div>`; }
+    res=await fetch('/api/analyze?ticker='+encodeURIComponent(tk));
+  }catch(e){
+    failPanels(`Could not reach the server — is <b>python app.py</b> still running? (${e.message})`);
+    return;
+  }
+
+  const raw=await res.text();
+  let j;
+  try{
+    j=JSON.parse(raw);
+  }catch(e){
+    // Malformed body: surface a usable excerpt instead of the bare parser
+    // error, which on its own gives no clue which field was bad.
+    const bad=raw.slice(0,400).replace(/</g,'&lt;');
+    failPanels(`Server returned a malformed response for ${tk}.<br>
+      <span style="color:var(--dim)">${e.message}</span><br><br>
+      <span style="color:var(--dim)">First 400 chars:</span><br>
+      <code style="color:var(--fg);font-size:10.5px;word-break:break-all">${bad}</code>`);
+    return;
+  }
+  if(!res.ok){ failPanels(`Error analysing ${tk}: ${j.error||('HTTP '+res.status)}`); return; }
+
+  try{ renderAll(j); }
+  catch(e){ failPanels(`Received data but failed to render ${tk}: ${e.message}`); }
 }
 
 /* ---------------- autocomplete ---------------- */
