@@ -23,8 +23,9 @@ from sources import stocks, news, symbols
 import finlex
 import indicators
 import predictor
+import volatility as vol
 
-BUILD = "v3.2"
+BUILD = "v4.0"
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -184,14 +185,34 @@ def api_analyze():
         headlines, news_mode = news.fetch_news(ticker, company_name=company_name, limit=12)
         sentiment = finlex.aggregate(headlines)
 
-        prediction = predictor.predict_next_session(
-            history=history,
-            atr=ind["atr"],
-            atr_pct=ind["atr_pct"],
-            sentiment_score=sentiment["score"],
-            sample_size=sentiment["sample_size"],
-            technical_score=tech["score"],
-        )
+        # Score every volatility model out-of-sample, then USE the winner
+        # for the live band rather than hardcoding one. The comparison is
+        # returned to the UI so the choice is visible, not hidden.
+        models = predictor.compare_volatility_models(history)
+        if models.get("available"):
+            best = models["best_model"]
+            sigma_next = vol.forecast_next_sigma(history, best, models.get("garch"))
+            prediction = predictor.predict_with_model(
+                history=history,
+                sigma_forecast=sigma_next,
+                k=models["best_k"],
+                sentiment_score=sentiment["score"],
+                sample_size=sentiment["sample_size"],
+                technical_score=tech["score"],
+                model_name=best,
+            )
+        else:
+            # Not enough history to calibrate - fall back to the fixed ATR band.
+            prediction = predictor.predict_next_session(
+                history=history,
+                atr=ind["atr"],
+                atr_pct=ind["atr_pct"],
+                sentiment_score=sentiment["score"],
+                sample_size=sentiment["sample_size"],
+                technical_score=tech["score"],
+            )
+            prediction["model"] = "ATR (fallback)"
+
         bt = predictor.backtest(history)
 
     except Exception as e:
@@ -231,6 +252,7 @@ def api_analyze():
         },
         "prediction": prediction,
         "backtest": bt,
+        "vol_models": models,
     })
 
 
