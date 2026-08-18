@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, request, send_from_directory
 
 from sources import stocks, news
+import companies
 import finlex
 import indicators
 import predictor
@@ -138,6 +139,18 @@ def api_quotes():
     except Exception as e:
         app.logger.exception("quotes batch failed")
         return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/search")
+def api_search():
+    q = (request.args.get("q") or "").strip()
+    return jsonify(companies.search(q))
+
+
+@app.get("/api/companies")
+def api_companies():
+    return jsonify(companies.catalog_grouped())
+
 
 
 @app.get("/api/analyze")
