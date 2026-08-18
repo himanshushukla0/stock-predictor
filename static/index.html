@@ -318,7 +318,7 @@ table.raw th{color:var(--dim)}
 
   <div class="hdr">
     <div>
-      <h1>NEWS_SIGNAL<span class="cur">_</span> <b>//</b> MARKET OPS<span style="color:var(--dim)"> v3.2</span></h1>
+      <h1>NEWS_SIGNAL<span class="cur">_</span> <b>//</b> MARKET OPS</h1>
       <p class="sub">VOLATILITY BANDS · NEWS SENTIMENT · TECHNICALS — A SIGNAL GAUGE, NOT A FORECAST. NOT FINANCIAL ADVICE.</p>
     </div>
     <div class="hdr-r">
@@ -385,15 +385,17 @@ table.raw th{color:var(--dim)}
   </div>
 
   <div class="disc">
-    <strong>How to read this.</strong> The predicted band is <b>±0.6 × ATR</b> (Average True Range, a standard
-    volatility measure) centered on the last close, then nudged by news sentiment and technical lean — each nudge
-    capped at a fraction of one ATR so a "signal" can never imply more movement than the stock's own volatility
-    supports. <strong>The backtest is the honest part:</strong> it walks forward using only past data at each step
-    and reports hit rate beside band width, because a wide enough band hits 100% of the time and tells you nothing.
-    It tests the volatility baseline only — no archive of historical sentiment exists here, so it says nothing about
-    whether the news scoring works. Direction at a one-day horizon is close to a coin flip and markets price in
-    public news fast. <span class="badge demo" style="vertical-align:1px">DEMO</span> means live feeds were
-    unreachable and synthetic sample data is shown.
+    <strong>What this does and doesn't do.</strong> It does <b>not</b> predict direction — at a one-day horizon
+    that is close to a coin flip, and markets price in public news fast. What it forecasts is <b>range</b>, because
+    volatility genuinely clusters (calm follows calm, turbulence follows turbulence) and that is one of the most
+    reliably measurable effects in finance. Four volatility models compete on every stock — ATR, rolling σ, EWMA and
+    GARCH(1,1) — each calibrated on a training window to aim at the same coverage, then scored out-of-sample by
+    <b>Winkler interval score</b> (band width plus a penalty for misses). Because they're compared at matched
+    coverage, a model cannot win by simply being wider. The winner drives the live band; the whole table is shown
+    so the choice is visible rather than asserted. Sentiment and technicals shift the band's <b>centre only</b>,
+    never its width — tone should not be able to masquerade as certainty. <span class="badge demo"
+    style="vertical-align:1px">DEMO</span> means live feeds were unreachable and synthetic sample data is shown.
+    Not financial advice.
   </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -660,6 +662,37 @@ function renderAll(d){
       available at that point. Typical actual daily move <b>${bt.mean_abs_move_pct}%</b>. ${bt.caveat}</div>`
     :`<div class="note">Not enough history to backtest (${bt.reason||'unavailable'}).</div>`;
 
+  // ---- volatility model bake-off
+  const vm=d.vol_models||{};
+  const volHtml = vm.available ? `
+    <div class="card clip"><h2 class="sec">Volatility model bake-off · ${vm.best_model} selected</h2>
+      <table class="bt"><thead><tr><th>Model</th><th>k</th><th>Coverage</th><th>Avg width</th>
+        <th>Winkler ↓</th><th></th></tr></thead><tbody>
+        ${vm.rows.map(r=>{
+          const worst=Math.max(...vm.rows.map(x=>x.winkler));
+          const rel=worst>0?(r.winkler/worst)*100:0;
+          const off=Math.abs(r.coverage_pct-vm.target_coverage_pct);
+          return `<tr class="${r.model===vm.best_model?'hl':''}">
+            <td>${r.model}${r.model===vm.best_model?' ◂':''}</td>
+            <td>${r.k}</td>
+            <td class="${off>8?'dn':''}">${r.coverage_pct}%</td>
+            <td>${r.mean_width_pct}%</td>
+            <td>${r.winkler}</td>
+            <td><div class="bc"><i style="width:${rel}%"></i></div></td></tr>`;}).join('')}
+      </tbody></table>
+      <div class="note">
+        Target coverage <b>${vm.target_coverage_pct}%</b> · trained on ${vm.train_sessions} sessions,
+        scored out-of-sample on ${vm.test_sessions}.
+        ${vm.vs_atr_pct!==null&&vm.vs_atr_pct!==undefined?`<b>${vm.best_model}</b> beats the old ATR band by
+          <b>${vm.vs_atr_pct}%</b> on Winkler score.`:'ATR is currently the best of the four.'}
+        ${vm.garch?`GARCH fit: α=${vm.garch.alpha} β=${vm.garch.beta} (persistence ${vm.garch.persistence}).`:''}
+        <br>${vm.method}
+        <br><span style="color:var(--dim)">A model showing coverage far from the target is mis-calibrated on
+        this stock — the selector rejects it even if its bands look tight.</span>
+      </div></div>`
+    : `<div class="card clip"><h2 class="sec">Volatility model bake-off</h2>
+       <div class="note">Not enough history to calibrate models (${vm.reason||'unavailable'}) — using the fixed ATR band.</div></div>`;
+
   $('p-sg').innerHTML=`
     <div class="card clip"><h2 class="sec">Technical readout</h2>${indTiles(d)}</div>
     <div class="card clip"><h2 class="sec">Combined signal</h2><div class="sr">
@@ -689,13 +722,16 @@ function renderAll(d){
           <div class="stat"><div class="k">Predicted low</div><div class="v">${cur(p.predicted_low,sym)}</div></div>
           <div class="stat"><div class="k">Predicted high</div><div class="v">${cur(p.predicted_high,sym)}</div></div>
           <div class="stat"><div class="k">Band width</div><div class="v">${(p.band_width_pct*100).toFixed(2)}%</div><div class="n">of price</div></div>
+          ${p.model?`<div class="stat"><div class="k">Vol model</div><div class="v" style="font-size:15px">${p.model}</div>
+            <div class="n">${p.sigma_annual_pct?p.sigma_annual_pct+'% annualised':''}</div></div>`:''}
         </div>
         <div class="rbar"><div class="f" style="left:${P(p.predicted_low)}%;width:${P(p.predicted_high)-P(p.predicted_low)}%"></div>
           <div class="m" style="left:calc(${P(d.current_price)}% - 1px)"></div></div>
         <div class="lb" style="margin-top:4px"><span>${cur(lo,sym)}</span><span>now ${cur(d.current_price,sym)}</span><span>${cur(hiB,sym)}</span></div>
         <div class="note">${p.note}</div></div>
       <div class="card clip" style="flex:1 1 340px"><h2 class="sec">Backtest · does the band hold?</h2>${btHtml}</div>
-    </div>`;
+    </div>
+    ${volHtml}`;
 
   // ---- INTEL panel
   $('p-in').innerHTML=`<div class="card clip">
