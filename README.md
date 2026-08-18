@@ -1,6 +1,6 @@
 # News Signal — Stock Terminal
 
-**BUILD v3.1**
+**BUILD v3.2**
 
 A local terminal-style dashboard that combines three things for a stock: recent
 **price volatility**, a set of standard **technical indicators**, and the
@@ -117,15 +117,48 @@ rather than a guess.)
 
 ---
 
-## Keyboard shortcuts
+## Interface
+
+**Tabbed workspace.** Five panels — OVERVIEW, CHART, SIGNALS, INTEL, MARKETS.
+All panels are rendered once when a ticker loads, so switching between them is a
+pure CSS toggle: **zero latency, zero refetch**. The TARGET bar above the tabs
+stays pinned, so the ticker, price and day change are always on screen no matter
+which panel you're in.
+
+**Four themes**, switchable from the swatches in the header (persists between
+sessions):
+
+| Theme | Feel |
+|---|---|
+| **Tactical** | deep navy + cyan/amber HUD — the default ops-room look |
+| **Hazard** | blackout + amber/red, alert-console styling |
+| **Matrix** | classic terminal green |
+| **Frost** | slate + ice blue, lower intensity for long sessions |
+
+### Keyboard shortcuts
 
 | Key | Action |
 |---|---|
-| `/` | focus the ticker box |
+| `1` – `5` | jump to tab (instant) |
+| `/` | focus the search box |
+| `↑` `↓` | move through search results |
 | `Enter` | analyze |
-| `r` | refresh everything |
+| `R` | sync everything |
 
-Plus an `auto: 60s` toggle in the header for hands-off refreshing.
+Plus an `AUTO 60s` toggle in the header for hands-off refreshing.
+
+### A note on the chart colors
+
+The series colors weren't picked by eye — they were run through a
+colorblindness/contrast validator. Two findings worth recording:
+
+- Cyan / amber / violet (price, SMA20, SMA50) pass every check with worst-case
+  CVD separation ΔE 19.3.
+- **Red and green at equal lightness measure ΔE 3.2 under deuteranopia** — that
+  is, effectively identical to roughly 8% of men. The up-candle is therefore kept
+  deliberately brighter than its "correct" band position, which lifts separation
+  to ΔE 12.6. Direction is also redundantly encoded with ▲/▼ arrows everywhere,
+  so color is never the only signal.
 
 ---
 
