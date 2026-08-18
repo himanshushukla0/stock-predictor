@@ -14,10 +14,12 @@ exists because "did my new code actually load?" is otherwise invisible.
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, send_from_directory
+from flask.json.provider import DefaultJSONProvider
 
 from sources import stocks, news, symbols
 import finlex
@@ -25,9 +27,39 @@ import indicators
 import predictor
 import volatility as vol
 
-BUILD = "v4.0"
+BUILD = "v4.1"
+
+def _json_safe(o):
+    """
+    Replace NaN / Infinity with null, recursively.
+
+    Python's json.dumps emits bare `NaN` and `Infinity` literals, which are a
+    non-standard extension: json.loads accepts them, so this looks fine
+    server-side, but a browser's JSON.parse rejects them and the entire
+    response fails to parse. Bad market data (a halted session, a zero
+    divisor) is therefore enough to break the whole page.
+
+    The upstream fix is to drop bad bars at ingestion, which sources/stocks.py
+    now does. This is the backstop so a NaN arising anywhere else -- a new
+    indicator, a division by zero in a future model -- degrades to a missing
+    value instead of a blank screen.
+    """
+    if isinstance(o, float):
+        return None if (math.isnan(o) or math.isinf(o)) else o
+    if isinstance(o, dict):
+        return {k: _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_json_safe(v) for v in o]
+    return o
+
+
+class SafeJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        return super().dumps(_json_safe(obj), **kwargs)
+
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+app.json = SafeJSONProvider(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WATCHLIST_FILE = os.path.join(BASE_DIR, "watchlist.json")
